@@ -5,51 +5,51 @@ extern crate serde;
 extern crate serde_json;
 extern crate chrono;
 extern crate chrono_tz;
-extern crate regex;
+//extern crate regex;
 extern crate url;
 extern crate reqwest;
 
-use chrono::{NaiveDateTime, NaiveTime, DateTime, Local, Duration, TimeZone};
+use chrono::{NaiveDateTime, /*NaiveTime,*/ DateTime, /*Local, Duration,*/ TimeZone};
 use chrono_tz::Europe::Berlin;
 use serde::de::{Deserializer, Deserialize, DeserializeOwned};
-use regex::Regex;
+//use regex::Regex;
 use url::Url;
 use reqwest::{Client, StatusCode};
 
-use std::str::FromStr;
+//use std::str::FromStr;
 use std::fmt::Display;
 
 const API_KEY: &str = "377d840e54b59adbe53608ba1aad70e8";
 const API_BASE: &str = "https://live.kvv.de/webapp/";
 
-fn parse_departure_time<'de, D>(deserializer: D) -> Result<DateTime<chrono_tz::Tz>, D::Error>
-where
-    D: Deserializer<'de>,
-{
-    let s: String = Deserialize::deserialize(deserializer)?;
-
-    let re = Regex::new(r"^([1-9]) min$").unwrap();
-
-    if s == "sofort" {
-        Ok(Local::now().with_timezone(&Berlin))
-    } else if re.is_match(&s) {
-        // unwraps should be ok, because of the regex test
-        let mins = &re.captures_iter(&s).nth(0).unwrap()[1];
-        let mins = i64::from_str(mins).unwrap();
-        Ok(Local::now().with_timezone(&Berlin) + Duration::minutes(mins))
-    } else {
-        NaiveTime::parse_from_str(&s, "%H:%M")
-            .map(|t| {
-                let now = Local::now().with_timezone(&Berlin).naive_local();
-                let mut departure = now.date().and_time(t);
-                if t < now.time() {
-                    departure += Duration::days(1);
-                }
-                Berlin.from_local_datetime(&departure).unwrap()
-            })
-            .map_err(serde::de::Error::custom)
-    }
-}
+//fn parse_departure_time<'de, D>(deserializer: D) -> Result<DateTime<chrono_tz::Tz>, D::Error>
+//where
+//    D: Deserializer<'de>,
+//{
+//    let s: String = Deserialize::deserialize(deserializer)?;
+//
+//    let re = Regex::new(r"^([1-9]) min$").expect("1");//.unwrap();
+//
+//    if s == "sofort" {
+//        Ok(Local::now().with_timezone(&Berlin))
+//    } else if re.is_match(&s) {
+//        // unwraps should be ok, because of the regex test
+//        let mins = &re.captures_iter(&s).nth(0).expect("2")[1];//.unwrap()[1];
+//        let mins = i64::from_str(mins).expect("3");//.unwrap();
+//        Ok(Local::now().with_timezone(&Berlin) + Duration::minutes(mins))
+//    } else {
+//        NaiveTime::parse_from_str(&s, "%H:%M")
+//            .map(|t| {
+//                let now = Local::now().with_timezone(&Berlin).naive_local();
+//                let mut departure = now.date().and_time(t);
+//                if t < now.time() {
+//                    departure += Duration::days(1);
+//                }
+//                Berlin.from_local_datetime(&departure).unwrap()
+//            })
+//            .map_err(serde::de::Error::custom)
+//    }
+//}
 
 fn parse_timestamp<'de, D>(deserializer: D) -> Result<DateTime<chrono_tz::Tz>, D::Error>
 where
@@ -61,14 +61,14 @@ where
         .map_err(serde::de::Error::custom)
 }
 
-pub fn format_departure_time(dt: DateTime<chrono_tz::Tz>) -> String {
-    let minutes = dt.signed_duration_since(Local::now()).num_minutes();
-    match minutes {
-        0 => "now".to_owned(),
-        1...9 => format!("{} min", minutes),
-        _ => format!("{}", dt.format("%H:%M")),
-    }
-}
+//pub fn format_departure_time(dt: DateTime<chrono_tz::Tz>) -> String {
+//    let minutes = dt.signed_duration_since(Local::now()).num_minutes();
+//    match minutes {
+//        0 => "now".to_owned(),
+//        1...9 => format!("{} min", minutes),
+//        _ => format!("{}", dt.format("%H:%M")),
+//    }
+//}
 
 /// Information about a tram station
 #[derive(Debug, Deserialize, PartialEq)]
@@ -100,8 +100,8 @@ pub struct Departure {
     /// does not seem to correspond to platform
     pub direction: String,
     /// when the train arrives
-    #[serde(deserialize_with = "parse_departure_time")]
-    pub time: DateTime<chrono_tz::Tz>,
+    //#[serde(deserialize_with = "parse_departure_time")]
+    pub time: String,//DateTime<chrono_tz::Tz>,
     /// low-floor tram?
     pub lowfloor: bool,
     /// real time data available?
@@ -116,7 +116,8 @@ pub struct Departure {
 impl Display for Departure {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         let rt = if self.realtime {"*"} else {" "};
-        write!(f, "{:<3} {:<20} {}{}", self.route, self.destination, format_departure_time(self.time), rt)
+        write!(f, "{:<3} {:<20} {}{}", self.route, self.destination, self.time, rt)
+        //write!(f, "{:<3} {:<20} {}{}", self.route, self.destination, format_departure_time(self.time), rt)
     }
 }
 
@@ -143,7 +144,15 @@ fn query<T: DeserializeOwned>(path: &str, params: Vec<(&str, &str)>) -> Result<T
     params.push(("key", API_KEY));
 
     let url = Url::parse_with_params(&format!("{}{}", API_BASE, path), params).unwrap();
-    Client::new().get(url).send()?.error_for_status()?.json()
+
+    println!("\n\nquery = {}\n", url);
+    let resp = Client::new().get(url).send()?.error_for_status();
+
+    match &resp {
+        Ok(r) => println!("resp = {:?}\n", r),
+        Err(e) => println!("Error! - resp = {:?}\n", e),
+    };
+    resp?.json()
 }
 
 fn search(path: &str) -> Result<Vec<Stop>, reqwest::Error> {
@@ -177,6 +186,10 @@ fn departures(path: &str) -> Result<Departures, reqwest::Error> {
     query::<Departures>(path, vec![])
 }
 
+pub fn departures2(path: &str) -> Result<String, reqwest::Error> {
+    query::<String>(path, vec![])
+}
+
 fn departures_with_max(path: &str, max_info: u32) -> Result<Departures, reqwest::Error> {
     query::<Departures>(path, vec![("maxInfos", &max_info.to_string())])
 }
@@ -202,6 +215,7 @@ pub fn departures_by_route_with_max(stop_id: &str, route: &str, max_info: u32) -
     departures_with_max(&format!("departures/byroute/{}/{}", route, stop_id), max_info)
 }
 
+
 /// Get next departures for a given stop and route (up to 10)
 pub fn departures_by_route(stop_id: &str, route: &str) -> Result<Departures, reqwest::Error> {
     departures(&format!("departures/byroute/{}/{}", route, stop_id))
@@ -213,7 +227,10 @@ mod tests {
     use super::*;
     use serde_json;
 
-    const EXAMPLE_DEPARTURES: &str = r#"{"timestamp":"2018-03-31 22:16:45","stopName":"Friedrichstal Mitte","departures":[{"route":"S2","destination":"Spöck","direction":"2","time":"4 min","vehicleType":null,"lowfloor":true,"realtime":true,"traction":0,"stopPosition":"2"},{"route":"S2","destination":"Rheinstetten","direction":"1","time":"22:40","vehicleType":null,"lowfloor":true,"realtime":true,"traction":0,"stopPosition":"1"}]}"#;
+//    const EXAMPLE_DEPARTURES: &str = r#"{"timestamp":"2018-03-31 22:16:45","stopName":"Friedrichstal Mitte","departures":[{"route":"S2","destination":"Spöck","direction":"2","time":"4 min","vehicleType":null,"lowfloor":true,"realtime":true,"traction":0,"stopPosition":"2"},{"route":"S2","destination":"Rheinstetten","direction":"1","time":"22:40","vehicleType":null,"lowfloor":true,"realtime":true,"traction":0,"stopPosition":"1"}]}"#;
+
+    const EXAMPLE_DEPARTURES: &str = "{\"timestamp\":\"2019-01-16 19:44:02\",\"stopName\":\"Karlsruhe Durlacher Tor\",\"departures\":[{\"route\":\"4\",\"destination\":\"Jägerhaus\",\"direction\":\"2\",\"time\":\"1 min\",\"vehicleType\":null,\"lowfloor\":true,\"realtime\":true,\"traction\":0,\"stopPosition\":\"4\"},{\"route\":\"S2\",\"destination\":\"Rheinstetten\",\"direction\":\"1\",\"time\":\"3 min\",\"vehicleType\":null,\"lowfloor\":true,\"realtime\":true,\"traction\":0,\"stopPosition\":\"3\"},{\"route\":\"1\",\"destination\":\"Durlach\",\"direction\":\"2\",\"time\":\"3 min\",\"vehicleType\":null,\"lowfloor\":true,\"realtime\":true,\"traction\":2,\"stopPosition\":\"2\"},{\"route\":\"1\",\"destination\":\"Oberreut\",\"direction\":\"1\",\"time\":\"4 min\",\"vehicleType\":null,\"lowfloor\":true,\"realtime\":true,\"traction\":2,\"stopPosition\":\"1\"},{\"route\":\"S4\",\"destination\":\"Eppingen\",\"direction\":\"2\",\"time\":\"5 min\",\"vehicleType\":null,\"lowfloor\":false,\"realtime\":true,\"traction\":0,\"stopPosition\":\"2\"},{\"route\":\"5\",\"destination\":\"Rintheim\",\"direction\":\"2\",\"time\":\"6 min\",\"vehicleType\":null,\"lowfloor\":true,\"realtime\":true,\"traction\":0,\"stopPosition\":\"4\"},{\"route\":\"S5\",\"destination\":\"Mühlacker\",\"direction\":\"2\",\"time\":\"7 min\",\"vehicleType\":null,\"lowfloor\":false,\"realtime\":true,\"traction\":0,\"stopPosition\":\"2\"},{\"route\":\"5\",\"destination\":\"Rheinhafen\",\"direction\":\"1\",\"time\":\"7 min\",\"vehicleType\":null,\"lowfloor\":true,\"realtime\":true,\"traction\":0,\"stopPosition\":\"3\"},{\"route\":\"S5\",\"destination\":\"Wörth Badepark\",\"direction\":\"1\",\"time\":\"8 min\",\"vehicleType\":null,\"lowfloor\":false,\"realtime\":true,\"traction\":0,\"stopPosition\":\"1\"},{\"route\":\"2\",\"destination\":\"Wolfartsweier\",\"direction\":\"2\",\"time\":\"9 min\",\"vehicleType\":null,\"lowfloor\":true,\"realtime\":true,\"traction\":0,\"stopPosition\":\"2\"}]}";
+
     const EXAMPLE_STOPS: &str = r#"{"stops":[{"id":"de:8215:14304","name":"Oberderdingen Lindenplatz","lat":49.06906386,"lon":8.80650108},{"id":"de:8211:31908","name":"Baden-Baden Klosterplatz","lat":48.74631613,"lon":8.2558711}]}"#;
 
     #[test]
